@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pong Game</title>
+    <style>
+        #game-container {
+            width: 800px;
+            height: 300px;
+            border: 2px solid #000;
+            position: relative;
+            background: #000;
+            overflow: hidden;
+            margin: 20px auto;
+        }
+        
+        .paddle {
+            width: 10px;
+            height: 50px;
+            background: white;
+            position: absolute;
+            top: 125px;
+        }
+        
+        #player-paddle {
+            left: 10px;
+        }
+        
+        #computer-paddle {
+            right: 10px;
+        }
+        
+        #ball {
+            width: 10px;
+            height: 10px;
+            background: white;
+            position: absolute;
+            border-radius: 50%;
+        }
+        
+        #score {
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .button {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+
+        #start-button {
+            top: 40%;
+        }
+
+        #pause-button {
+            top: 60%;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 24px;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            display: none;
+        }
+
+        #fps-counter {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="score">0 - 0</div>
+        <div id="fps-counter">FPS: 60</div>
+        <div id="player-paddle" class="paddle"></div>
+        <div id="computer-paddle" class="paddle"></div>
+        <div id="ball"></div>
+        <button id="start-button" class="button">Oyunu Başlat</button>
+        <button id="pause-button" class="button" style="display: none;">Durdur</button>
+        <div id="game-over" class="game-over"></div>
+    </div>
+
+    <script>
+        const gameContainer = document.getElementById('game-container');
+        const ball = document.getElementById('ball');
+        const playerPaddle = document.getElementById('player-paddle');
+        const computerPaddle = document.getElementById('computer-paddle');
+        const scoreElement = document.getElementById('score');
+        const startButton = document.getElementById('start-button');
+        const pauseButton = document.getElementById('pause-button');
+        const gameOverElement = document.getElementById('game-over');
+        const fpsCounter = document.getElementById('fps-counter');
+
+        let ballX = 400;
+        let ballY = 150;
+        let ballSpeedX = 6;
+        let ballSpeedY = 6;
+        let playerScore = 0;
+        let computerScore = 0;
+        let animationFrameId;
+        let playerPaddleY = 125;
+        let computerPaddleY = 125;
+        let computerSpeed = 4;
+        let isPaused = false;
+        let isGameOver = false;
+        const WINNING_SCORE = 5;
+
+        let lastTime = performance.now();
+        let frameCount = 0;
+        const FPS_TARGET = 60;
+        const FRAME_TIME = 1000 / FPS_TARGET;
+
+        function updateScore() {
+            scoreElement.textContent = `${playerScore} - ${computerScore}`;
+        }
+
+        function resetBall() {
+            ballX = 400;
+            ballY = 150;
+            ballSpeedY = (Math.random() - 0.5) * 8;
+            ballSpeedX = Math.random() < 0.5 ? -6 : 6;
+            ball.style.left = ballX + 'px';
+            ball.style.top = ballY + 'px';
+        }
+
+        function movePlayerPaddle(e) {
+            if (!isPaused && !isGameOver) {
+                const rect = gameContainer.getBoundingClientRect();
+                const mouseY = e.clientY - rect.top - playerPaddle.offsetHeight / 2;
+                
+                if (mouseY >= 0 && mouseY <= gameContainer.offsetHeight - playerPaddle.offsetHeight) {
+                    playerPaddleY = mouseY;
+                    playerPaddle.style.top = playerPaddleY + 'px';
+                }
+            }
+        }
+
+        function updateComputerPaddle() {
+            const paddleCenter = computerPaddleY + computerPaddle.offsetHeight / 2;
+            const ballCenter = ballY + ball.offsetHeight / 2;
+            
+            if (paddleCenter < ballCenter - 10) {
+                computerPaddleY += computerSpeed;
+            } else if (paddleCenter > ballCenter + 10) {
+                computerPaddleY -= computerSpeed;
+            }
+
+            if (computerPaddleY < 0) {
+                computerPaddleY = 0;
+            } else if (computerPaddleY > gameContainer.offsetHeight - computerPaddle.offsetHeight) {
+                computerPaddleY = gameContainer.offsetHeight - computerPaddle.offsetHeight;
+            }
+
+            computerPaddle.style.top = computerPaddleY + 'px';
+        }
+
+        function checkCollision(paddle, ballX, ballY) {
+            const paddleRect = paddle.getBoundingClientRect();
+            const ballRect = ball.getBoundingClientRect();
+            
+            return ballRect.right >= paddleRect.left &&
+                   ballRect.left <= paddleRect.right &&
+                   ballRect.bottom >= paddleRect.top &&
+                   ballRect.top <= paddleRect.bottom;
+        }
+
+        function endGame() {
+            isGameOver = true;
+            const winner = playerScore >= WINNING_SCORE ? "Oyuncu" : "Bilgisayar";
+            gameOverElement.textContent = `Oyun Bitti! ${winner} Kazandı!`;
+            gameOverElement.style.display = 'block';
+            stopGame();
+        }
+
+        function checkWinner() {
+            if (playerScore >= WINNING_SCORE || computerScore >= WINNING_SCORE) {
+                endGame();
+                return true;
+            }
+            return false;
+        }
+
+        function updateGame(currentTime) {
+            if (isPaused || isGameOver) {
+                animationFrameId = requestAnimationFrame(updateGame);
+                return;
+            }
+
+            const elapsed = currentTime - lastTime;
+            if (elapsed < FRAME_TIME) {
+                animationFrameId = requestAnimationFrame(updateGame);
+                return;
+            }
+
+            frameCount++;
+            if (currentTime > lastTime + 1000) {
+                fpsCounter.textContent = `FPS: ${frameCount}`;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+
+            if (ballY <= 0 || ballY >= gameContainer.offsetHeight - ball.offsetHeight) {
+                ballSpeedY = -ballSpeedY;
+            }
+
+            if (checkCollision(playerPaddle, ballX, ballY)) {
+                ballSpeedX = Math.abs(ballSpeedX);
+                const deltaY = (ballY - (playerPaddleY + playerPaddle.offsetHeight / 2)) / 3;
+                ballSpeedY = deltaY;
+            } else if (checkCollision(computerPaddle, ballX, ballY)) {
+                ballSpeedX = -Math.abs(ballSpeedX);
+                const deltaY = (ballY - (computerPaddleY + computerPaddle.offsetHeight / 2)) / 3;
+                ballSpeedY = deltaY;
+            }
+
+            ballX += ballSpeedX;
+            ballY += ballSpeedY;
+            ball.style.left = ballX + 'px';
+            ball.style.top = ballY + 'px';
+
+            updateComputerPaddle();
+
+            if (ballX <= 0) {
+                computerScore++;
+                updateScore();
+                if (!checkWinner()) {
+                    resetBall();
+                }
+            } else if (ballX >= gameContainer.offsetWidth - ball.offsetWidth) {
+                playerScore++;
+                updateScore();
+                if (!checkWinner()) {
+                    resetBall();
+                }
+            }
+
+            animationFrameId = requestAnimationFrame(updateGame);
+        }
+
+        function togglePause() {
+            if (!isGameOver) {
+                isPaused = !isPaused;
+                pauseButton.textContent = isPaused ? "Devam Et" : "Durdur";
+            }
+        }
+
+        function stopGame() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            startButton.style.display = 'block';
+            pauseButton.style.display = 'none';
+        }
+
+        function startGame() {
+            startButton.style.display = 'none';
+            pauseButton.style.display = 'block';
+            gameOverElement.style.display = 'none';
+            isPaused = false;
+            isGameOver = false;
+            playerScore = 0;
+            computerScore = 0;
+            updateScore();
+            
+            resetBall();
+            playerPaddleY = gameContainer.offsetHeight / 2 - playerPaddle.offsetHeight / 2;
+            computerPaddleY = gameContainer.offsetHeight / 2 - computerPaddle.offsetHeight / 2;
+            playerPaddle.style.top = playerPaddleY + 'px';
+            computerPaddle.style.top = computerPaddleY + 'px';
+            
+            lastTime = performance.now();
+            frameCount = 0;
+            
+            pauseButton.textContent = "Durdur";
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            animationFrameId = requestAnimationFrame(updateGame);
+        }
+
+        gameContainer.addEventListener('mousemove', movePlayerPaddle);
+        startButton.addEventListener('click', startGame);
+        pauseButton.addEventListener('click', togglePause);
+
+        resetBall();
+    </script>
+</body>
+</html>
